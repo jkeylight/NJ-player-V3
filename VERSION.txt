@@ -1,0 +1,18 @@
+NJ Player 3.0
+Version: 3.0.0
+Build: 2026.08.18
+Codename: "Enhancement & Encryption"
+
+This is NJ Player 3.0 — a fully offline desktop application that combines 
+professional-grade video enhancement with military-grade encryption.
+
+Features:
+- GPU-accelerated video enhancement (10 presets)
+- Real-time audio processing
+- AES-256-GCM encryption
+- 35-pass secure deletion
+- Smart content auto-detection
+- Split-screen compare mode
+- Modern dark-themed GUI
+
+Built on mpv media player with custom shader pipelines.

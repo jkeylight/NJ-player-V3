@@ -1,0 +1,22 @@
+NJ Player 3.0 — File Integrity Checksums
+==========================================
+
+Run the following PowerShell command to generate current checksums:
+
+Get-ChildItem -Recurse -File | ForEach-Object {
+    $hash = (Get-FileHash $_.FullName -Algorithm MD5).Hash
+    "$hash  $($_.FullName)"
+} | Out-File CHECKSUM.txt
+
+To verify integrity:
+Get-Content CHECKSUM.txt | ForEach-Object {
+    $parts = $_ -split '  ', 2
+    $hash = (Get-FileHash $parts[1] -Algorithm MD5).Hash
+    if ($hash -eq $parts[0]) {
+        Write-Host "OK: $($parts[1])" -ForegroundColor Green
+    } else {
+        Write-Host "FAIL: $($parts[1])" -ForegroundColor Red
+    }
+}
+
+Note: Checksums are generated during build. Re-run the command above after any modifications.

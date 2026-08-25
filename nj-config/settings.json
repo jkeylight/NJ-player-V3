@@ -1,0 +1,50 @@
+{
+    "version": "3.0.0",
+    "enhancement": {
+        "default_preset": "auto",
+        "auto_detect": true,
+        "preserve_skin_tone": true,
+        "deband_strength": 0.4,
+        "denoise_strength": 0.3,
+        "sharpen_strength": 0.5,
+        "upscale_target": 2
+    },
+    "audio": {
+        "enabled": true,
+        "noise_reduction": true,
+        "dialogue_boost": true,
+        "volume_normalize": true,
+        "bass_restore": false,
+        "stereo_widen": false,
+        "night_mode": false,
+        "loudness_target": -16
+    },
+    "security": {
+        "encryption": "AES-256-GCM",
+        "secure_delete_passes": 35,
+        "clear_ram_on_exit": true,
+        "lock_after_minutes": 5,
+        "max_password_attempts": 5
+    },
+    "appearance": {
+        "theme": "dark",
+        "accent_color": "#00d4ff",
+        "show_fps": false,
+        "show_status": true,
+        "font_size": 12
+    },
+    "performance": {
+        "hardware_decoding": "auto",
+        "gpu_api": "auto",
+        "target_fps": 60,
+        "auto_quality_adjust": true,
+        "battery_saver": true
+    },
+    "playback": {
+        "save_position": true,
+        "resume_playback": true,
+        "default_volume": 100,
+        "default_speed": 1.0,
+        "default_subtitle_track": "auto"
+    }
+}

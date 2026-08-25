@@ -1,0 +1,11 @@
+temp/
+thumbnails/
+watch_later/
+*.log
+mpv/mpv.exe
+mpv/ffmpeg.exe
+mpv/yt-dlp.exe
+mpv/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
+mpv/ffmpeg-master-latest-win64-gpl/bin/ffplay.exe
+mpv/ffmpeg-master-latest-win64-gpl/bin/ffprobe.exe
+__pycache__/
