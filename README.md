@@ -12,6 +12,9 @@ An offline desktop video player for your downloaded videos, with a **"better Luc
 
 ## Quick Start
 
+> **Windows only.** For full prerequisites, first-run setup, build steps, and
+> troubleshooting, see **[BUILD-WINDOWS.md](BUILD-WINDOWS.md)**.
+
 1. Open this folder in PowerShell and run:
 
    ```powershell
@@ -185,6 +188,9 @@ nj-player/
 ├── screenshots/          <- saved frames
 └── temp/                 <- temporary files (auto-cleaned)
 ```
+
+> **Build guide:** [BUILD-WINDOWS.md](BUILD-WINDOWS.md) — prerequisites, first-run
+> setup, building the portable ZIP, and troubleshooting for Windows.
 
 Everything is self-contained in this folder — you can move it anywhere (USB stick works) and it keeps working. To uninstall, run `uninstall.ps1` or delete the folder.
 
