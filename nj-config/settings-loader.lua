@@ -7,11 +7,11 @@ local mp = require 'mp'
 local msg = require 'mp.msg'
 
 -- Settings file path
-local settings_path = mp.command_native({"expand-path", "~~/config/settings.json"})
+local settings_path = mp.command_native({"expand-path", "~~/nj-config/settings.json"})
 
 -- Default settings
 local default_settings = {
-    version = "3.0.0",
+    version = "3.0.1",
     enhancement = {
         default_preset = "auto",
         auto_detect = true,

@@ -1336,8 +1336,13 @@ function Play-Video {
     $playlistStatus.ForeColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
     $form.Refresh()
 
-    # Build mpv args
-    $mpvArgs = @("--profile=nj-$preset", "`"$FilePath`"")
+    # Build mpv args. --config-dir loads the bundled mpv.conf (enhancement
+    # profiles, input.conf hotkeys, shader paths), matching NJ-Player.bat.
+    $mpvArgs = @(
+        "--config-dir=`"$RootDir`"",
+        "--profile=nj-$preset",
+        "`"$FilePath`""
+    )
 
     # Play and wait for it to finish
     $proc = Start-Process -FilePath $MpvExe -ArgumentList $mpvArgs -Wait -PassThru

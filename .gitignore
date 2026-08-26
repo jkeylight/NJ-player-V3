@@ -2,6 +2,13 @@ temp/
 thumbnails/
 watch_later/
 *.log
+build/
+dist/
+screenshots/
+library/
+encrypted/
+nj-config/profiles/
+nj-config/preset-custom.json
 mpv/mpv.exe
 mpv/ffmpeg.exe
 mpv/yt-dlp.exe

@@ -177,7 +177,7 @@ nj-player/
 │   └── install-security.ps1 <- security setup
 ├── shaders/              <- enhancement shaders (created by install.ps1)
 ├── mpv/                  <- mpv + yt-dlp + ffmpeg (created by install.ps1)
-├── config/               <- user settings
+├── nj-config/            <- user settings
 ├── library/              <- downloaded web videos
 ├── encrypted/            <- encrypted files
 ├── thumbnails/           <- cached thumbnails

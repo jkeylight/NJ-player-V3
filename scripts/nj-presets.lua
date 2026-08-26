@@ -42,22 +42,18 @@ local function apply_preset(name)
 
     current_preset = preset_number
 
-    -- Show OSD message
-    local preset = presets[preset_number + 1]
-    mp.osd_message(
-        string.format("%s Mode\n%s",
-            preset.name:upper(),
-            preset.description
-        ), 2
-    )
+    -- Notify the overlay script so it can show a styled OSD message
+    -- (the overlay only displays; it does not apply the profile, so there is
+    -- no conflict with this handler).
+    mp.commandv('script-message', 'nj-preset-info', name)
 
-    msg.info("Applied preset: " .. preset.name)
+    msg.info("Applied preset: " .. name)
 end
 
 -- Cycle to next preset
 local function cycle_preset()
-    current_preset = (current_preset % #presets) + 1
-    local preset = presets[current_preset]
+    current_preset = (current_preset + 1) % #presets
+    local preset = presets[current_preset + 1]
     apply_preset(preset.name)
 end
 
@@ -79,15 +75,7 @@ end
 
 mp.add_key_binding('F9', 'nj-cycle', cycle_preset)
 
--- Show current preset on startup
-mp.register_event('file-loaded', function()
-    local preset = presets[current_preset + 1]
-    if preset then
-        mp.osd_message(
-            string.format("NJ Player — %s Mode", preset.name:upper()),
-            1.5
-        )
-    end
-end)
+-- Show current preset on startup is handled by player-overlay.lua to avoid
+-- duplicate on-screen messages.
 
 msg.info("NJ Player preset system loaded")

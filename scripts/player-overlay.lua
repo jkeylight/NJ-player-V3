@@ -79,7 +79,10 @@ local presets = {
     restore = { name = "Restore", desc = "Full restoration" },
 }
 
-mp.register_script_message('nj-preset', function(name)
+-- Listens to 'nj-preset-info' broadcast by nj-presets.lua (which applies the
+-- profile). This handler only updates the on-screen display, so it never
+-- overrides the preset-application handler in nj-presets.lua.
+mp.register_script_message('nj-preset-info', function(name)
     if presets[name] then
         current_preset = name
         show_preset_info(presets[name].name, presets[name].desc)

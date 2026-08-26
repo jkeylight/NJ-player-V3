@@ -1,9 +1,9 @@
 NJ Player 3.0
-Version: 3.0.0
-Build: 2026.08.18
+Version: 3.0.1
+Build: 2026.08.26
 Codename: "Enhancement & Encryption"
 
-This is NJ Player 3.0 — a fully offline desktop application that combines 
+This is NJ Player 3.0.1 — a fully offline desktop application that combines 
 professional-grade video enhancement with military-grade encryption.
 
 Features:
@@ -16,3 +16,10 @@ Features:
 - Modern dark-themed GUI
 
 Built on mpv media player with custom shader pipelines.
+
+Changelog (3.0.1):
+- Fixed build system: correct shader downloads (matching mpv.conf), dynamic
+  mpv download via GitHub API, and settings copied from nj-config.
+- Fixed config directory references (nj-config) across the app.
+- Fixed F9 preset cycling (now wraps correctly from Restore back to Off).
+- Fixed make-icon.ps1 (invalid .ico offset math and syntax).

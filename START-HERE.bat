@@ -76,7 +76,7 @@ echo  Settings:
 echo  Edit nj-config\settings.json to customize
 echo.
 echo  Opening settings folder...
-start explorer "%~dp0config"
+start explorer "%~dp0nj-config"
 goto menu
 
 :check

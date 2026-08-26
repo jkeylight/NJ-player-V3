@@ -185,6 +185,12 @@ $FfmpegExePath = Join-Path $MpvDir "ffmpeg.exe"
 if ((-not (Test-Path $FfmpegExePath)) -or $Force) {
     Write-Host "Downloading ffmpeg..." -ForegroundColor Yellow
     try {
+        # Make sure release metadata is available even when mpv was already installed
+        if (-not $releaseData) {
+            $releaseUrl = "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
+            $releaseData = Invoke-RestMethod -Uri $releaseUrl -UseBasicParsing
+        }
+
         # Find ffmpeg in the same release
         $ffmpegAsset = $null
         foreach ($asset in $releaseData.assets) {

@@ -104,18 +104,18 @@ $playBtn.Add_Click({
     $tempFile = Join-Path $tempDir "decrypted_video.mp4"
 
     Write-Host "Decrypting..." -ForegroundColor Yellow
-    $cmd = "python `"$PythonScript`" decrypt `"$FilePath`" --password `"$pass`" --output `"$tempFile`""
-    Invoke-Expression $cmd
+    $argList = "`"$PythonScript`" decrypt `"$FilePath`" --password `"$pass`" --output `"$tempFile`""
+    $proc = Start-Process -FilePath "python" -ArgumentList $argList -Wait -PassThru -NoNewWindow
 
-    if ($LASTEXITCODE -eq 0) {
+    if ($proc.ExitCode -eq 0) {
         Write-Host "Playing..." -ForegroundColor Green
         # Play with NJ Player
         & $PlayerScript $tempFile
 
         # Secure delete after playback
         Write-Host "Shredding temp file..." -ForegroundColor Yellow
-        $shredCmd = "python `"$PythonScript`" shred `"$tempFile`" --passes 35"
-        Invoke-Expression $shredCmd
+        $shredArgs = "`"$PythonScript`" shred `"$tempFile`" --passes 35"
+        $shredProc = Start-Process -FilePath "python" -ArgumentList $shredArgs -Wait -PassThru -NoNewWindow
     } else {
         Write-Host "Decryption failed — wrong password?" -ForegroundColor Red
         Start-Sleep -Seconds 3

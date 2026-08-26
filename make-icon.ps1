@@ -3,6 +3,8 @@
 # Draws the NJ Player logo at multiple sizes
 # ============================================
 
+Add-Type -AssemblyName System.Drawing
+
 $RootDir = $PSScriptRoot
 $IconPath = Join-Path $RootDir "nj-player.ico"
 
@@ -98,23 +100,32 @@ $writer.Write([System.UInt16]0)      # Reserved
 $writer.Write([System.UInt16]1)      # Type (1 = ICO)
 $writer.Write([System.UInt16]($iconFiles.Count))  # Number of images
 
-# Write each icon
+# Directory entries + running image data offset
+$dirEntrySize = 16
+$runningOffset = 6 + ($dirEntrySize * $iconFiles.Count)
+
 foreach ($pngPath in $iconFiles) {
     $pngData = [System.IO.File]::ReadAllBytes($pngPath)
-    $size = [System.IO.FileInfo]::($pngPath).Name -replace 'icon_|\.png',''
-    
-    # ICO directory entry
-    $writer.Write([System.Byte]([int]$size % 256))  # Width
-    $writer.Write([System.Byte]([int]$size % 256))  # Height
-    $writer.Write([System.Byte]0)      # Color palette
-    $writer.Write([System.Byte]0)      # Reserved
-    $writer.Write([System.UInt16]1)    # Color planes
-    $writer.Write([System.UInt16]32)   # Bits per pixel
-    $writer.Write([System.UInt32]$pngData.Length)  # Image size
-    $writer.Write([System.UInt32]($iconFiles.IndexOf($pngPath) * 16 + 6 + ($iconFiles.Count * 16)))  # Offset
+    # Extract the numeric size from "icon_<size>.png"
+    $size = [int]([System.IO.Path]::GetFileNameWithoutExtension($pngPath) -replace 'icon_', '')
+
+    # In the ICO format, a width/height byte of 0 means 256 pixels
+    $dimByte = if ($size -ge 256) { 0 } else { $size }
+
+    # ICO directory entry (16 bytes)
+    $writer.Write([System.Byte]$dimByte)             # Width
+    $writer.Write([System.Byte]$dimByte)             # Height
+    $writer.Write([System.Byte]0)                    # Color palette
+    $writer.Write([System.Byte]0)                    # Reserved
+    $writer.Write([System.UInt16]1)                  # Color planes
+    $writer.Write([System.UInt16]32)                 # Bits per pixel
+    $writer.Write([System.UInt32]$pngData.Length)    # Image size
+    $writer.Write([System.UInt32]$runningOffset)     # Image offset
+
+    $runningOffset += $pngData.Length
 }
 
-# Write PNG data
+# Write PNG image data (in the same order as the directory entries)
 foreach ($pngPath in $iconFiles) {
     $pngData = [System.IO.File]::ReadAllBytes($pngPath)
     $writer.Write($pngData)

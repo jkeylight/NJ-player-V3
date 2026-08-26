@@ -140,16 +140,17 @@ $encryptBtn.Add_Click({
 
     $form.Close()
 
-    # Build command
-    $cmd = "python `"$PythonScript`" encrypt `"$FilePath`" --password `"$pass`""
+    # Build arguments and launch python directly (avoids shell injection /
+    # mangled passwords that Invoke-Expression would cause).
+    $argList = "`"$PythonScript`" encrypt `"$FilePath`" --password `"$pass`""
     if ($deleteCheck.Checked) {
-        $cmd += " --delete-original"
+        $argList += " --delete-original"
     }
 
     Write-Host "Encrypting..." -ForegroundColor Yellow
-    Invoke-Expression $cmd
+    $proc = Start-Process -FilePath "python" -ArgumentList $argList -Wait -PassThru -NoNewWindow
 
-    if ($LASTEXITCODE -eq 0) {
+    if ($proc.ExitCode -eq 0) {
         Write-Host "Encryption complete!" -ForegroundColor Green
     } else {
         Write-Host "Encryption failed" -ForegroundColor Red
