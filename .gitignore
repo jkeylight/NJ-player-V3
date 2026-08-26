@@ -1,12 +1,14 @@
 temp/
 thumbnails/
 watch_later/
+logs/
 *.log
 build/
 dist/
 screenshots/
 library/
 encrypted/
+tests/__pycache__/
 nj-config/profiles/
 nj-config/preset-custom.json
 mpv/mpv.exe

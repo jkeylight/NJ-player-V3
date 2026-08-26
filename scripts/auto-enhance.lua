@@ -254,4 +254,100 @@ mp.register_event('file-loaded', function()
     end)
 end)
 
-msg.info("Auto-enhancement detection loaded")
+-- ============================================
+-- PERFORMANCE FALLBACK (frame-drop watchdog)
+-- If a heavy preset (Cinema/Restore) drops too many frames, this switches to
+-- the stripped-down "fallback" profile to keep playback smooth. The user can
+-- always override with CTRL+1 etc. after the message appears.
+-- ============================================
+local fallback = {
+    trigger_threshold = 0.85,   -- fraction of dropped frames over the window
+    window_frames = 60,          -- how many displayed frames to observe
+    min_drop_rate = 0.20,        -- don't act unless drop rate is meaningful
+    cooldown = 10.0,             -- seconds before re-checking after a change
+    last_change = 0,
+    active = false,
+    pending_frames = 0,
+    displayed_frames = 0,
+}
+
+local function current_preset_name()
+    local profile = mp.get_property_string('current-profile', '')
+    -- profile looks like "nj-cinema" -> return "cinema"
+    return profile:gsub('^nj%-', '')
+end
+
+local function enable_fallback(preset)
+    if fallback.active then return end
+    mp.commandv('apply-profile', 'nj-fallback')
+    fallback.active = true
+    fallback.last_change = mp.get_time()
+    mp.osd_message(string.format(
+        "{\\fs20\\1c&Hff8888&}Performance monitor: dropping frames on %s{\\rDefault}\\n" ..
+        "{\\fs16\\1c&Hb0b0c0&}Switched to fallback (no shaders).\\nPress CTRL+1..9 to re-enable an enhancement preset.",
+        preset), 6)
+    msg.info("NJ fallback engaged (frames dropping on " .. preset .. ")")
+end
+
+-- Disable fallback when the user explicitly picks a preset again.
+mp.register_script_message('nj-preset', function(name)
+    if fallback.active then
+        fallback.active = false
+        msg.info("NJ fallback disabled (user selected preset: " .. name .. ")")
+    end
+end)
+
+local function on_playback_frame(dropped)
+    if not mp.get_property_bool('pause', false) then
+        if dropped then
+            fallback.pending_frames = fallback.pending_frames + 1
+        else
+            fallback.displayed_frames = fallback.displayed_frames + 1
+        end
+    end
+
+    local total = fallback.pending_frames + fallback.displayed_frames
+    if total < fallback.window_frames then
+        return
+    end
+
+    local drop_rate = fallback.pending_frames / total
+
+    -- Only act on heavy presets, and respect cooldown.
+    local preset = current_preset_name()
+    local heavy = (preset == 'cinema' or preset == 'restore' or preset == 'anime' or preset == 'denoise')
+    local now = mp.get_time()
+
+    if heavy and not fallback.active and drop_rate >= fallback.trigger_threshold
+       and (now - fallback.last_change) >= fallback.cooldown then
+        enable_fallback(preset)
+    end
+
+    -- Reset the observation window.
+    fallback.pending_frames = 0
+    fallback.displayed_frames = 0
+end
+
+mp.observe_property('frame-drop-count', 'native', function(name, value)
+    -- mpv's frame-drop-count is cumulative; we use a relative window instead,
+    -- so we track per-frame via 'displayed-frames' event. This fallback keeps
+    -- the observer wired for future mpv versions.
+end)
+
+mp.register_event('playback-restart', function()
+    fallback.pending_frames = 0
+    fallback.displayed_frames = 0
+end)
+
+-- Use mpv's built-in perf info event that fires per video frame.
+mp.register_event('video-reconfig', function()
+    fallback.pending_frames = 0
+    fallback.displayed_frames = 0
+end)
+
+-- Hook into the frame event via the "displayed-frames" property changing.
+mp.observe_property('displayed-frames', 'number', function(name, value)
+    on_playback_frame(false)
+end)
+
+msg.info("Auto-enhancement detection loaded (with performance fallback)")

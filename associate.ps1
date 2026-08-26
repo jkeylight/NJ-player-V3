@@ -33,6 +33,13 @@ if ($Remove) {
         Remove-Item -Path $historyPath -Recurse -Force
         Write-Host "✓ Removed 'Clear NJ Player History' from context menu" -ForegroundColor Green
     }
+
+    # Remove folder "Play in NJ Player"
+    $folderPath = "HKCU:\Software\Classes\Directory\shell\NJPlayFolder"
+    if (Test-Path $folderPath) {
+        Remove-Item -Path $folderPath -Recurse -Force
+        Write-Host "✓ Removed 'Play Folder in NJ Player' from folder menu" -ForegroundColor Green
+    }
     
     exit 0
 }
@@ -68,7 +75,22 @@ Set-ItemProperty -Path $historyCmdPath -Name "(Default)" -Value "powershell -Exe
 
 Write-Host "✓ Added 'Clear NJ Player History' to context menu" -ForegroundColor Green
 
+# --- Folder "Play in NJ Player" (queue whole folder) ---
+$folderPath = "HKCU:\Software\Classes\Directory\shell\NJPlayFolder"
+New-Item -Path $folderPath -Force | Out-Null
+Set-ItemProperty -Path $folderPath -Name "(Default)" -Value "Play Folder in NJ Player"
+if (Test-Path $IconPath) {
+    Set-ItemProperty -Path $folderPath -Name "Icon" -Value $IconPath
+}
+
+$folderCmdPath = "$folderPath\command"
+New-Item -Path $folderCmdPath -Force | Out-Null
+# %1 = the folder path; the GUI launcher adds every video inside it.
+Set-ItemProperty -Path $folderCmdPath -Name "(Default)" -Value "`"$PlayerBat`" `"%1`""
+
+Write-Host "✓ Added 'Play Folder in NJ Player' to folder menu" -ForegroundColor Green
+
 Write-Host ""
-Write-Host "Done! Right-click any video to open with NJ Player." -ForegroundColor Cyan
+Write-Host "Done! Right-click any video or folder to open with NJ Player." -ForegroundColor Cyan
 Write-Host "Note: You may need to restart File Explorer for changes to appear." -ForegroundColor Gray
 Write-Host ""

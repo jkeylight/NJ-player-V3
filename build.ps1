@@ -18,7 +18,7 @@ $ErrorActionPreference = 'Stop'
 # ============================================
 $BuildConfig = @{
     AppName = "NJ Player"
-    Version = "3.0.1"
+    Version = "3.0.2"
     Author = "NJ"
     Description = "Offline Video Enhancement & Encryption Suite"
     OutputDir = "dist"
@@ -74,10 +74,12 @@ $RequiredFiles = @(
     "mpv.conf",
     "input.conf",
     "install.ps1",
+    "log.ps1",
     "associate.ps1",
     "desktop-shortcut.ps1",
     "clear-history.ps1",
     "make-icon.ps1",
+    "update-shaders.ps1",
     "scripts\nj-presets.lua",
     "scripts\player-overlay.lua",
     "scripts\audio-enhance.lua",
@@ -156,12 +158,15 @@ $CoreFiles = @(
     "input.conf",
     "install.ps1",
     "uninstall.ps1",
+    "log.ps1",
+    "update-shaders.ps1",
     "associate.ps1",
     "desktop-shortcut.ps1",
     "clear-history.ps1",
     "make-icon.ps1",
     "build.ps1",
     "README.md",
+    "BUILD-WINDOWS.md",
     "VERSION.txt"
 )
 

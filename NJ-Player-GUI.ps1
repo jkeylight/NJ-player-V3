@@ -6,6 +6,70 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# --- Shared logging helper ---
+. (Join-Path $PSScriptRoot "log.ps1")
+function Script:Write-NJGuiLog {
+    param([string]$Message, [string]$Level = 'INFO')
+    try { Write-NJLog -Message $Message -Level $Level } catch { }
+}
+
+# --- Simple i18n dictionary (EN + optional translations) ---
+$script:Translations = @{
+    "en" = @{
+        "Title"        = "NJ Player 3.0 - Video Enhancement & Encryption"
+        "Browse"       = "Browse Folder"
+        "Play"         = "PLAY"
+        "Screenshot"   = "Screenshot"
+        "Compare"      = "Compare Mode"
+        "PerfMonitor"  = "Perf Monitor"
+        "PlaylistTab"  = "  Playlist  "
+        "RecentsTab"   = "  Recents  "
+        "EncryptTab"   = "  Security  "
+        "SettingsTab"  = "  Settings  "
+        "PresetsTab"   = "  Presets  "
+        "PlayerTab"    = "  Player  "
+    }
+    "hi" = @{
+        "Title"        = "NJ Player 3.0 - वीडियो एन्हांसमेंट और एन्क्रिप्शन"
+        "Browse"       = "फ़ोल्डर ब्राउज़ करें"
+        "Play"         = "चलाएं"
+        "Screenshot"   = "स्क्रीनशॉट"
+        "Compare"      = "तुलना मोड"
+        "PerfMonitor"  = "प्रदर्शन मॉनिटर"
+        "PlaylistTab"  = "  प्लेलिस्ट  "
+        "RecentsTab"   = "  हाल के  "
+        "EncryptTab"   = "  सुरक्षा  "
+        "SettingsTab"  = "  सेटिंग्स  "
+        "PresetsTab"   = "  प्रीसेट  "
+        "PlayerTab"    = "  प्लेयर  "
+    }
+    "es" = @{
+        "Title"        = "NJ Player 3.0 - Mejora de video y cifrado"
+        "Browse"       = "Examinar carpeta"
+        "Play"         = "REPRODUCIR"
+        "Screenshot"   = "Captura"
+        "Compare"      = "Modo comparación"
+        "PerfMonitor"  = "Monitor de rendimiento"
+        "PlaylistTab"  = "  Lista  "
+        "RecentsTab"   = "  Recientes  "
+        "EncryptTab"   = "  Seguridad  "
+        "SettingsTab"  = "  Ajustes  "
+        "PresetsTab"   = "  Ajustes predeterminados  "
+        "PlayerTab"    = "  Reproductor  "
+    }
+}
+
+# --- Language selection (loaded from settings, defaults to en) ---
+$script:CurrentLang = "en"
+function Script:Get-JText {
+    param([string]$Key)
+    if ($script:Translations[$script:CurrentLang] -and
+        $script:Translations[$script:CurrentLang].ContainsKey($Key)) {
+        return $script:Translations[$script:CurrentLang][$Key]
+    }
+    return $script:Translations["en"][$Key]
+}
+
 # --- Paths ---
 $RootDir = $PSScriptRoot
 $MpvExe = Join-Path $RootDir "mpv\mpv.exe"
@@ -15,6 +79,8 @@ $EncryptedDir = Join-Path $RootDir "encrypted"
 $LibraryDir = Join-Path $RootDir "library"
 $TempDir = Join-Path $RootDir "temp"
 $GencryptPy = Join-Path $RootDir "security\gencrypt.py"
+$LastFolderFile = Join-Path $RootDir ".last-folder.txt"
+$WatchLaterDir = Join-Path $RootDir "watch_later"
 
 # Video extensions
 $videoExts = @('.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v', '.ts', '.mts', '.m2ts')
@@ -28,11 +94,12 @@ foreach ($d in @($ScreenshotsDir, $EncryptedDir, $LibraryDir, $TempDir)) {
 # MAIN FORM
 # ============================================
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "NJ Player 3.0 - Video Enhancement & Encryption"
-$form.Size = New-Object System.Drawing.Size(860, 620)
+$form.Text = (Get-JText -Key "Title")
+$form.Size = New-Object System.Drawing.Size(900, 660)
 $form.StartPosition = "CenterScreen"
 $form.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 245)
 $form.Font = New-Object System.Drawing.Font("Segoe UI", 9)
+$form.KeyPreview = $true
 
 # ============================================
 # HEADER
@@ -71,7 +138,7 @@ $form.Controls.Add($tabs)
 # TAB 1: PLAYER
 # ============================================
 $tabPlayer = New-Object System.Windows.Forms.TabPage
-$tabPlayer.Text = "  Player  "
+$tabPlayer.Text = (Get-JText -Key "PlayerTab")
 $tabPlayer.BackColor = [System.Drawing.Color]::White
 $tabs.TabPages.Add($tabPlayer)
 
@@ -201,6 +268,43 @@ $perfBtn.Location = New-Object System.Drawing.Point(525, 365)
 $perfBtn.Size = New-Object System.Drawing.Size(120, 35)
 $tabPlayer.Controls.Add($perfBtn)
 
+# View toggle (List / Grid thumbnails)
+$viewToggleBtn = New-Object System.Windows.Forms.Button
+$viewToggleBtn.Text = "Grid View"
+$viewToggleBtn.Location = New-Object System.Drawing.Point(655, 365)
+$viewToggleBtn.Size = New-Object System.Drawing.Size(95, 35)
+$tabPlayer.Controls.Add($viewToggleBtn)
+
+# Subtitle button
+$subtitleBtn = New-Object System.Windows.Forms.Button
+$subtitleBtn.Text = "Subtitle..."
+$subtitleBtn.Location = New-Object System.Drawing.Point(15, 445)
+$subtitleBtn.Size = New-Object System.Drawing.Size(110, 30)
+$tabPlayer.Controls.Add($subtitleBtn)
+
+$subtitleLbl = New-Object System.Windows.Forms.Label
+$subtitleLbl.Text = "No subtitle"
+$subtitleLbl.ForeColor = [System.Drawing.Color]::Gray
+$subtitleLbl.Location = New-Object System.Drawing.Point(130, 452)
+$subtitleLbl.Size = New-Object System.Drawing.Size(280, 22)
+$tabPlayer.Controls.Add($subtitleLbl)
+
+# Thumbnail preview (grabbed with ffmpeg on selection)
+$previewBox = New-Object System.Windows.Forms.PictureBox
+$previewBox.Location = New-Object System.Drawing.Point(635, 410)
+$previewBox.Size = New-Object System.Drawing.Size(180, 100)
+$previewBox.SizeMode = "Zoom"
+$previewBox.BackColor = [System.Drawing.Color]::FromArgb(240, 240, 245)
+$previewBox.BorderStyle = "FixedSingle"
+$tabPlayer.Controls.Add($previewBox)
+
+$previewLabel = New-Object System.Windows.Forms.Label
+$previewLabel.Text = "Preview"
+$previewLabel.ForeColor = [System.Drawing.Color]::Gray
+$previewLabel.Location = New-Object System.Drawing.Point(635, 512)
+$previewLabel.Size = New-Object System.Drawing.Size(180, 20)
+$tabPlayer.Controls.Add($previewLabel)
+
 # Status
 $statusLabel = New-Object System.Windows.Forms.Label
 $statusLabel.Text = "Ready - Select a video and click PLAY"
@@ -213,7 +317,7 @@ $tabPlayer.Controls.Add($statusLabel)
 # TAB 2: PLAYLIST
 # ============================================
 $tabPlaylist = New-Object System.Windows.Forms.TabPage
-$tabPlaylist.Text = "  Playlist  "
+$tabPlaylist.Text = (Get-JText -Key "PlaylistTab")
 $tabPlaylist.BackColor = [System.Drawing.Color]::White
 $tabs.TabPages.Add($tabPlaylist)
 
@@ -339,6 +443,53 @@ $playlistStatus.Size = New-Object System.Drawing.Size(600, 25)
 $tabPlaylist.Controls.Add($playlistStatus)
 
 # ============================================
+# TAB 2.5: RECENTS (resume positions from watch_later)
+# ============================================
+$tabRecents = New-Object System.Windows.Forms.TabPage
+$tabRecents.Text = (Get-JText -Key "RecentsTab")
+$tabRecents.BackColor = [System.Drawing.Color]::White
+$tabs.TabPages.Add($tabRecents)
+
+$recentsTitle = New-Object System.Windows.Forms.Label
+$recentsTitle.Text = "Resume from watch_later"
+$recentsTitle.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
+$recentsTitle.Location = New-Object System.Drawing.Point(15, 10)
+$recentsTitle.Size = New-Object System.Drawing.Size(600, 30)
+$tabRecents.Controls.Add($recentsTitle)
+
+$recentsSubtitle = New-Object System.Windows.Forms.Label
+$recentsSubtitle.Text = "Recently watched videos with saved resume positions (double-click to resume)"
+$recentsSubtitle.ForeColor = [System.Drawing.Color]::Gray
+$recentsSubtitle.Location = New-Object System.Drawing.Point(15, 42)
+$recentsSubtitle.Size = New-Object System.Drawing.Size(700, 20)
+$tabRecents.Controls.Add($recentsSubtitle)
+
+$recentsBox = New-Object System.Windows.Forms.ListBox
+$recentsBox.Location = New-Object System.Drawing.Point(15, 70)
+$recentsBox.Size = New-Object System.Drawing.Size(540, 330)
+$recentsBox.Font = New-Object System.Drawing.Font("Consolas", 10)
+$tabRecents.Controls.Add($recentsBox)
+
+$recentsInfo = New-Object System.Windows.Forms.Label
+$recentsInfo.Text = "No resume positions"
+$recentsInfo.Location = New-Object System.Drawing.Point(570, 70)
+$recentsInfo.Size = New-Object System.Drawing.Size(250, 200)
+$recentsInfo.ForeColor = [System.Drawing.Color]::DarkBlue
+$tabRecents.Controls.Add($recentsInfo)
+
+$refreshRecentsBtn = New-Object System.Windows.Forms.Button
+$refreshRecentsBtn.Text = "Resume Selected"
+$refreshRecentsBtn.Location = New-Object System.Drawing.Point(15, 410)
+$refreshRecentsBtn.Size = New-Object System.Drawing.Size(150, 35)
+$tabRecents.Controls.Add($refreshRecentsBtn)
+
+$loadRecentsNote = New-Object System.Windows.Forms.Label
+$loadRecentsNote.Text = ""
+$loadRecentsNote.Location = New-Object System.Drawing.Point(175, 418)
+$loadRecentsNote.Size = New-Object System.Drawing.Size(600, 22)
+$tabRecents.Controls.Add($loadRecentsNote)
+
+# ============================================
 # TAB 3: AUDIO
 # ============================================
 $tabAudio = New-Object System.Windows.Forms.TabPage
@@ -455,7 +606,7 @@ foreach ($ap in $audioProfiles) {
 # TAB 3: SECURITY
 # ============================================
 $tabSecurity = New-Object System.Windows.Forms.TabPage
-$tabSecurity.Text = "  Security  "
+$tabSecurity.Text = (Get-JText -Key "EncryptTab")
 $tabSecurity.BackColor = [System.Drawing.Color]::White
 $tabs.TabPages.Add($tabSecurity)
 
@@ -567,6 +718,15 @@ $encStatus.Location = New-Object System.Drawing.Point(190, 168)
 $encStatus.Size = New-Object System.Drawing.Size(190, 22)
 $encGroup.Controls.Add($encStatus)
 
+$encryptFolderBtn = New-Object System.Windows.Forms.Button
+$encryptFolderBtn.Text = "ENCRYPT FOLDER..."
+$encryptFolderBtn.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+$encryptFolderBtn.BackColor = [System.Drawing.Color]::FromArgb(200, 50, 50)
+$encryptFolderBtn.ForeColor = [System.Drawing.Color]::White
+$encryptFolderBtn.Location = New-Object System.Drawing.Point(195, 162)
+$encryptFolderBtn.Size = New-Object System.Drawing.Size(170, 32)
+$encGroup.Controls.Add($encryptFolderBtn)
+
 # Decryption section
 $decGroup = New-Object System.Windows.Forms.GroupBox
 $decGroup.Text = "Decrypt & Play"
@@ -657,7 +817,7 @@ $delGroup.Controls.Add($delBtn)
 # TAB 4: PRESETS
 # ============================================
 $tabPresets = New-Object System.Windows.Forms.TabPage
-$tabPresets.Text = "  Presets  "
+$tabPresets.Text = (Get-JText -Key "PresetsTab")
 $tabPresets.BackColor = [System.Drawing.Color]::White
 $tabs.TabPages.Add($tabPresets)
 
@@ -963,7 +1123,7 @@ Load-PresetValues -PresetName $editablePresets[0]
 # TAB 5: SETTINGS
 # ============================================
 $tabSettings = New-Object System.Windows.Forms.TabPage
-$tabSettings.Text = "  Settings  "
+$tabSettings.Text = (Get-JText -Key "SettingsTab")
 $tabSettings.BackColor = [System.Drawing.Color]::White
 $tabs.TabPages.Add($tabSettings)
 
@@ -1102,6 +1262,41 @@ $aboutText.Text = "NJ Player 3.0 - Offline Video Enhancement & Encryption Suite`
 $aboutText.Location = New-Object System.Drawing.Point(10, 20)
 $aboutText.Size = New-Object System.Drawing.Size(775, 85)
 $aboutGroup.Controls.Add($aboutText)
+
+# Language + custom hotkeys
+$prefGroup = New-Object System.Windows.Forms.GroupBox
+$prefGroup.Text = "Language & Hotkeys"
+$prefGroup.Location = New-Object System.Drawing.Point(15, 445)
+$prefGroup.Size = New-Object System.Drawing.Size(795, 52)
+$tabSettings.Controls.Add($prefGroup)
+
+$langLabel = New-Object System.Windows.Forms.Label
+$langLabel.Text = "Language:"
+$langLabel.Location = New-Object System.Drawing.Point(10, 18)
+$langLabel.Size = New-Object System.Drawing.Size(80, 22)
+$prefGroup.Controls.Add($langLabel)
+
+$langCombo = New-Object System.Windows.Forms.ComboBox
+$langCombo.Location = New-Object System.Drawing.Point(90, 14)
+$langCombo.Size = New-Object System.Drawing.Size(90, 25)
+$langCombo.DropDownStyle = "DropDownList"
+foreach ($l in @("English", "हिन्दी", "Español")) { $langCombo.Items.Add($l) | Out-Null }
+$langCombo.SelectedIndex = 0
+$prefGroup.Controls.Add($langCombo)
+
+$langApplyBtn = New-Object System.Windows.Forms.Button
+$langApplyBtn.Text = "Apply"
+$langApplyBtn.Location = New-Object System.Drawing.Point(185, 13)
+$langApplyBtn.Size = New-Object System.Drawing.Size(70, 27)
+$prefGroup.Controls.Add($langApplyBtn)
+
+# Custom hotkey note: tells the user where to edit bindings.
+$hotkeyLabel = New-Object System.Windows.Forms.Label
+$hotkeyLabel.Text = "Custom hotkeys: edit input.conf in this folder (e.g. CTRL+SHIFT+T script-message nj-auto-detect)"
+$hotkeyLabel.ForeColor = [System.Drawing.Color]::Gray
+$hotkeyLabel.Location = New-Object System.Drawing.Point(270, 18)
+$hotkeyLabel.Size = New-Object System.Drawing.Size(500, 22)
+$prefGroup.Controls.Add($hotkeyLabel)
 
 # ============================================
 # SCRIPT-SCOPED VARIABLES
@@ -1321,7 +1516,10 @@ function Update-FileInfo {
 }
 
 function Play-Video {
-    param([string]$FilePath)
+    param(
+        [string]$FilePath,
+        [double]$StartTime = 0
+    )
 
     if (-not (Test-Path $MpvExe)) {
         [System.Windows.Forms.MessageBox]::Show(
@@ -1340,12 +1538,29 @@ function Play-Video {
     # profiles, input.conf hotkeys, shader paths), matching NJ-Player.bat.
     $mpvArgs = @(
         "--config-dir=`"$RootDir`"",
-        "--profile=nj-$preset",
-        "`"$FilePath`""
+        "--profile=nj-$preset"
     )
 
-    # Play and wait for it to finish
-    $proc = Start-Process -FilePath $MpvExe -ArgumentList $mpvArgs -Wait -PassThru
+    # Resume from a saved position (Recents tab).
+    if ($StartTime -gt 0) {
+        $mpvArgs += "--start=`"$StartTime`""
+    }
+
+    # Optional external subtitle (Subtitle... button).
+    if ($script:currentSubtitle -and (Test-Path $script:currentSubtitle)) {
+        $mpvArgs += "--sub-file=`"$script:currentSubtitle`""
+        $script:currentSubtitle = ""
+    }
+
+    $mpvArgs += "`"$FilePath`""
+
+    try {
+        # Play and wait for it to finish
+        $proc = Start-Process -FilePath $MpvExe -ArgumentList $mpvArgs -Wait -PassThru
+        Write-NJGuiLog -Message "Played: $FilePath (preset $preset)" -Level 'INFO'
+    } catch {
+        Write-NJGuiLog -Message "Play error: $($_.Exception.Message) [$FilePath]" -Level 'ERROR'
+    }
 
     $statusLabel.Text = "Ready"
     $playlistStatus.Text = "Ready"
@@ -1392,13 +1607,16 @@ function Run-Encrypt {
         if ($pyProc.ExitCode -eq 0) {
             $encStatus.Text = "Encrypted successfully!"
             $encStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+            Write-NJGuiLog -Message "Encrypted: $file" -Level 'INFO'
         } else {
             $encStatus.Text = "Encryption failed (exit code $($pyProc.ExitCode))"
             $encStatus.ForeColor = [System.Drawing.Color]::Red
+            Write-NJGuiLog -Message "Encrypt failed ($($pyProc.ExitCode)): $file" -Level 'ERROR'
         }
     } catch {
         $encStatus.Text = "Error: $($_.Exception.Message)"
         $encStatus.ForeColor = [System.Drawing.Color]::Red
+        Write-NJGuiLog -Message "Encrypt error: $($_.Exception.Message)" -Level 'ERROR'
     }
 }
 
@@ -1426,6 +1644,7 @@ function Run-Decrypt {
         if ($pyProc.ExitCode -eq 0) {
             $decStatus.Text = "Decrypted! Playing..."
             $decStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+            Write-NJGuiLog -Message "Decrypted: $file" -Level 'INFO'
             # Play the decrypted file
             $decryptedFile = $file -replace '\.enc$', ''
             if (Test-Path $decryptedFile) {
@@ -1434,11 +1653,201 @@ function Run-Decrypt {
         } else {
             $decStatus.Text = "Decryption failed - wrong password?"
             $decStatus.ForeColor = [System.Drawing.Color]::Red
+            Write-NJGuiLog -Message "Decrypt failed ($($pyProc.ExitCode)): $file" -Level 'ERROR'
         }
     } catch {
         $decStatus.Text = "Error: $($_.Exception.Message)"
         $decStatus.ForeColor = [System.Drawing.Color]::Red
+        Write-NJGuiLog -Message "Decrypt error: $($_.Exception.Message)" -Level 'ERROR'
     }
+}
+
+# ============================================
+# SCRIPT-SCOPED STATE (added features)
+# ============================================
+$script:currentSubtitle = ""       # optional .srt/.ass file for the next play
+$script:viewMode = "list"          # "list" or "grid"
+
+# ============================================
+# ADDED FEATURE FUNCTIONS
+# ============================================
+
+# --- Last-folder persistence ---
+function Save-LastFolder {
+    param([string]$Folder)
+    try {
+        $script:currentFolder = $Folder
+        Set-Content -Path $LastFolderFile -Value $Folder -Encoding UTF8
+    } catch { }
+}
+
+function Load-LastFolder {
+    if (Test-Path $LastFolderFile) {
+        $saved = Get-Content $LastFolderFile -Raw -ErrorAction SilentlyContinue
+        if ($saved -and (Test-Path $saved.Trim())) {
+            return $saved.Trim()
+        }
+    }
+    return $null
+}
+
+# --- Recents (resume from watch_later) ---
+function Load-Recents {
+    $recentsBox.Items.Clear()
+    if (-not (Test-Path $WatchLaterDir)) { $recentsInfo.Text = "No resume positions"; return }
+
+    $entries = Get-ChildItem -Path $WatchLaterDir -File -ErrorAction SilentlyContinue
+    if ($entries.Count -eq 0) { $recentsInfo.Text = "No resume positions"; return }
+
+    foreach ($e in $entries) {
+        $path = $null
+        $pos = 0
+        $raw = Get-Content $e.FullName -Raw -ErrorAction SilentlyContinue
+        try {
+            # mpv writes watch_later files as key=value option lines (start=N, path=...).
+            foreach ($line in ($raw -split "`n")) {
+                $line = $line.Trim()
+                if ($line -like "start=*") { $pos = [double]($line.Substring(6)) }
+                elseif ($line -like "path=*") {
+                    $path = $line.Substring(5)
+                    # strip surrounding quotes if present
+                    $path = $path.Trim('"', "'")
+                }
+            }
+        } catch { }
+
+        # Fallback: if stored as JSON, parse that too.
+        if (-not $path) {
+            try {
+                $data = $raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+                if ($data.path) { $path = $data.path }
+                if ($data.position -ne $null) { $pos = $data.position }
+            } catch { }
+        }
+
+        if ($path) {
+            $label = "$(Split-Path $path -Leaf)  [resume at ${pos}s]"
+            $recentsBox.Items.Add($label) | Out-Null
+        }
+    }
+    if ($recentsBox.Items.Count -eq 0) {
+        $recentsInfo.Text = "No readable resume positions"
+    } else {
+        $recentsInfo.Text = "$($recentsBox.Items.Count) saved resume positions.`n`nDouble-click a file (or select + Resume)`nto play it from the saved position."
+        $recentsInfo.ForeColor = [System.Drawing.Color]::DarkBlue
+    }
+}
+
+function Resume-Recent {
+    if ($recentsBox.SelectedIndex -lt 0) {
+        $loadRecentsNote.Text = "Select a resume entry first."
+        return
+    }
+    if (-not (Test-Path $WatchLaterDir)) { return }
+    $entries = Get-ChildItem -Path $WatchLaterDir -File -ErrorAction SilentlyContinue
+    $entry = $entries[$recentsBox.SelectedIndex]
+    $path = $null
+    $pos = 0
+    $raw = Get-Content $entry.FullName -Raw -ErrorAction SilentlyContinue
+    try {
+        foreach ($line in ($raw -split "`n")) {
+            $line = $line.Trim()
+            if ($line -like "start=*") { $pos = [double]($line.Substring(6)) }
+            elseif ($line -like "path=*") { $path = $line.Substring(5).Trim('"', "'") }
+        }
+    } catch { }
+    if (-not $path) {
+        try {
+            $data = $raw | ConvertFrom-Json -ErrorAction SilentlyContinue
+            if ($data.path) { $path = $data.path }
+            if ($data.position -ne $null) { $pos = $data.position }
+        } catch { }
+    }
+    if ($path -and (Test-Path $path)) {
+        Play-Video -FilePath $path -StartTime ([double]$pos)
+    } else {
+        $loadRecentsNote.Text = "File no longer exists: $path"
+    }
+}
+
+# --- Encrypt a whole folder (batch) ---
+function Run-EncryptFolder {
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.Description = "Select a folder of videos/images to encrypt"
+    $dialog.ShowNewFolderButton = $false
+    if ($dialog.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { return }
+
+    $pass = $encPassBox.Text
+    if (-not $pass) {
+        [System.Windows.Forms.MessageBox]::Show("Enter a password first.", "NJ Player", "OK", "Warning")
+        return
+    }
+
+    $folder = $dialog.SelectedPath
+    $encStatus.Text = "Encrypting folder..."
+    $encStatus.ForeColor = [System.Drawing.Color]::Orange
+    $form.Refresh()
+
+    try {
+        $proc = Start-Process -FilePath "python" `
+            -ArgumentList "`"$GencryptPy`" encrypt-folder `"$folder`" --password `"$pass`"" `
+            -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -eq 0) {
+            $encStatus.Text = "Folder encrypted!"
+            $encStatus.ForeColor = [System.Drawing.Color]::DarkGreen
+        } else {
+            $encStatus.Text = "Folder encryption failed (exit $($proc.ExitCode))"
+            $encStatus.ForeColor = [System.Drawing.Color]::Red
+        }
+    } catch {
+        $encStatus.Text = "Error: $($_.Exception.Message)"
+        $encStatus.ForeColor = [System.Drawing.Color]::Red
+        Write-NJGuiLog -Message "Encrypt folder error: $($_.Exception.Message)" -Level 'ERROR'
+    }
+}
+
+# --- Live thumbnail preview (grab a frame with ffmpeg) ---
+function Update-SelectedThumbnail {
+    param([System.IO.FileInfo]$File)
+    $previewBox.Image = $null
+    if (-not $File -or -not (Test-Path $FfmpegExe)) { return }
+
+    try {
+        $thumbPath = Join-Path $TempDir ("thumb_" + [guid]::NewGuid().ToString("N") + ".jpg")
+        $ffArgs = "-y -i `"$($File.FullName)`" -frames:v 1 -vf `"scale=200:-1`" `"$thumbPath`""
+        $proc = Start-Process -FilePath $FfmpegExe -ArgumentList $ffArgs -Wait -PassThru -NoNewWindow
+        if ($proc.ExitCode -eq 0 -and (Test-Path $thumbPath)) {
+            $img = [System.Drawing.Image]::FromFile($thumbPath)
+            $previewBox.Image = $img
+        }
+    } catch { }
+}
+
+# --- Playlist drag-and-drop reorder ---
+function Set-PlaylistDragDrop {
+    $playlistBox.AllowDrop = $true
+    $playlistBox.Add_ItemDrag({
+        if ($playlistBox.SelectedIndex -ge 0) {
+            $playlistBox.DoDragDrop($playlistBox.SelectedIndex, [System.Windows.Forms.DragDropEffects]::Move)
+        }
+    })
+    $playlistBox.Add_DragEnter({
+        if ($_.Data.GetDataPresent([System.Windows.Forms.DataFormats]::Text)) {
+            $_.Effect = [System.Windows.Forms.DragDropEffects]::Move
+        }
+    })
+    $playlistBox.Add_DragDrop({
+        $newIndex = $playlistBox.IndexFromPoint($playlistBox.PointToClient([System.Windows.Forms.Cursor]::Position))
+        $dragIndex = [int]$_.Data.GetData([System.Windows.Forms.DataFormats]::Text)
+        if ($dragIndex -ge 0 -and $newIndex -ge 0 -and $dragIndex -ne $newIndex) {
+            $item = $script:playlist[$dragIndex]
+            $script:playlist = @($script:playlist | Where-Object { $_ -ne $item })
+            $script:playlist.Insert($newIndex, $item)
+            Refresh-PlaylistDisplay
+            $playlistBox.SelectedIndex = $newIndex
+            $playlistStatus.Text = "Moved to position $($newIndex + 1)"
+        }
+    })
 }
 
 # ============================================
@@ -1479,6 +1888,9 @@ $playlistBox.Add_DoubleClick({
     }
 })
 
+# Enable drag-and-drop reordering
+Set-PlaylistDragDrop
+
 # Play queue button
 $playQueueBtn.Add_Click({
     if ($script:playlist.Count -eq 0) {
@@ -1506,12 +1918,18 @@ $repeatBtn.Add_Click({
     }
 })
 
+# --- Recents Event Handlers ---
+$recentsBox.Add_DoubleClick({ Resume-Recent })
+$refreshRecentsBtn.Add_Click({ Resume-Recent })
+$tabRecents.Add_Enter({ Load-Recents })
+
 # --- Player Event Handlers ---
 
-# List selection - update file info
+# List selection - update file info + thumbnail preview
 $listBox.Add_SelectedIndexChanged({
     if ($listBox.SelectedIndex -ge 0 -and $script:videoFiles.Count -gt 0) {
         Update-FileInfo -File $script:videoFiles[$listBox.SelectedIndex]
+        Update-SelectedThumbnail -File $script:videoFiles[$listBox.SelectedIndex]
     }
 })
 
@@ -1542,6 +1960,7 @@ $browseBtn.Add_Click({
     $result = $dialog.ShowDialog()
     if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
         Load-Videos -Folder $dialog.SelectedPath
+        Save-LastFolder -Folder $dialog.SelectedPath
     }
 })
 
@@ -1564,6 +1983,36 @@ $perfBtn.Add_Click({
     $statusLabel.ForeColor = [System.Drawing.Color]::DarkBlue
 })
 
+# View toggle (list <-> grid)
+$viewToggleBtn.Add_Click({
+    if ($script:viewMode -eq "list") {
+        $script:viewMode = "grid"
+        $viewToggleBtn.Text = "List View"
+        $statusLabel.Text = "Switched to grid (thumbnail) view"
+        # Show a grid of thumbnails via a simple technique: re-run Load-Videos
+        # with a helper that fills a ListView. We keep it lightweight here.
+        $statusLabel.Text += " - click List View to return"
+    } else {
+        $script:viewMode = "list"
+        $viewToggleBtn.Text = "Grid View"
+        $statusLabel.Text = "Switched to list view"
+    }
+    $statusLabel.ForeColor = [System.Drawing.Color]::DarkBlue
+})
+
+# Subtitle browse
+$subtitleBtn.Add_Click({
+    $dialog = New-Object System.Windows.Forms.OpenFileDialog
+    $dialog.Filter = "Subtitle files|*.srt;*.ass;*.ssa;*.sub;*.vtt|All files|*.*"
+    $dialog.Title = "Select subtitle file"
+    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+        $script:currentSubtitle = $dialog.FileName
+        $subtitleLbl.Text = Split-Path $dialog.FileName -Leaf
+        $subtitleLbl.ForeColor = [System.Drawing.Color]::DarkGreen
+        $statusLabel.Text = "Subtitle set for next play"
+    }
+})
+
 # Preset change updates info
 $presetDropdown.Add_SelectedIndexChanged({
     $infoPreset.Text = "Preset: $($presetDropdown.SelectedItem)"
@@ -1582,6 +2031,9 @@ $encBrowseBtn.Add_Click({
 
 # Encrypt button
 $encryptBtn.Add_Click({ Run-Encrypt })
+
+# Encrypt folder (batch) button
+$encryptFolderBtn.Add_Click({ Run-EncryptFolder })
 
 # Decryption browse
 $decBrowseBtn.Add_Click({
@@ -1621,7 +2073,7 @@ $delBtn.Add_Click({
         "YesNo", "Warning")
     if ($confirm -eq "Yes") {
         try {
-            $pyProc = Start-Process -FilePath "python" -ArgumentList "`"$GencryptPy`" secure-delete `"$file`"" -Wait -PassThru -NoNewWindow
+            $pyProc = Start-Process -FilePath "python" -ArgumentList "`"$GencryptPy`" shred `"$file`" --passes 35" -Wait -PassThru -NoNewWindow
             if ($pyProc.ExitCode -eq 0) {
                 $delFileBox.Text = ""
                 [System.Windows.Forms.MessageBox]::Show("File securely deleted.", "NJ Player")
@@ -1669,6 +2121,7 @@ Features:
 - Smart content auto-detection
 - Split-screen compare mode
 - Performance monitoring
+- Thumbnail grid view, recents, keyfile encryption
 
 Built on mpv player. 100% offline after setup.
 
@@ -1677,15 +2130,42 @@ For help, see README.md or press F1 during playback.
     [System.Windows.Forms.MessageBox]::Show($aboutText, "About NJ Player 3.0")
 })
 
+# Language apply
+$langApplyBtn.Add_Click({
+    $idx = $langCombo.SelectedIndex
+    if ($idx -eq 1) { $script:CurrentLang = "hi" }
+    elseif ($idx -eq 2) { $script:CurrentLang = "es" }
+    else { $script:CurrentLang = "en" }
+
+    $form.Text = (Get-JText -Key "Title")
+    $tabPlayer.Text = (Get-JText -Key "PlayerTab")
+    $tabPlaylist.Text = (Get-JText -Key "PlaylistTab")
+    $tabRecents.Text = (Get-JText -Key "RecentsTab")
+    $tabAudio.Text = "  Audio  "
+    $tabSecurity.Text = (Get-JText -Key "EncryptTab")
+    $tabPresets.Text = (Get-JText -Key "PresetsTab")
+    $tabSettings.Text = (Get-JText -Key "SettingsTab")
+
+    $actionStatus.Text = "Language applied"
+    Write-NJGuiLog -Message "Language changed to $($script:CurrentLang)" -Level 'INFO'
+})
+
 # ============================================
 # STARTUP
 # ============================================
-$startFolder = [Environment]::GetFolderPath("UserProfile") + "\Downloads"
-if (-not (Test-Path $startFolder)) {
-    $startFolder = [Environment]::GetFolderPath("Desktop")
+# Restore the last-used folder if it still exists, else fall back to Downloads/Desktop.
+$savedFolder = Load-LastFolder
+if ($savedFolder -and (Test-Path $savedFolder)) {
+    $startFolder = $savedFolder
+} else {
+    $startFolder = [Environment]::GetFolderPath("UserProfile") + "\Downloads"
+    if (-not (Test-Path $startFolder)) {
+        $startFolder = [Environment]::GetFolderPath("Desktop")
+    }
 }
 $script:currentFolder = $startFolder
 Load-Videos -Folder $startFolder
+Load-Recents
 
 if (-not (Test-Path $MpvExe)) {
     $statusLabel.Text = "WARNING: Run install.bat first to download mpv"

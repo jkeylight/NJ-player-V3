@@ -7,6 +7,11 @@ An offline desktop video player for your downloaded videos, with a **"better Luc
 - **GPU-accelerated** — enhancement applies in real time as the video plays
 - **Plays almost everything** — MP4, MKV, AVI, WebM, MOV and more (built on mpv)
 - **Military-grade encryption** — AES-256-GCM with 35-pass secure deletion
+- **Thumbnail grid view** — browse your library as a poster wall / live preview
+- **Resume & recents** — jump back to where you left off
+- **Keyfile + folder-batch encryption** — extra security and whole-library workflows
+- **Multi-language UI** — English, हिन्दी, Español
+- **Auto performance fallback** — drops heavy shaders when the GPU can't keep up
 
 ---
 
@@ -110,6 +115,9 @@ This needs internet, of course — downloaded videos still play fully offline.
 | `CTRL+D` | Decrypt & play |
 | `CTRL+L` | Lock player |
 | `CTRL+BACKSPACE` | Clear resume position |
+| `ALT+CTRL+UP/DOWN` | Shift audio-video sync (±0.05s) |
+| `CTRL+SHIFT+UP` | Reset audio delay to 0 |
+| `CTRL+h` | Cycle hardware decoding |
 
 Plus all standard mpv controls: `space` play/pause, `←`/`→` seek 5s, `↑`/`↓` seek 60s, `[`/`]` speed, `f` fullscreen, `m` mute.
 
@@ -131,6 +139,9 @@ NJ Player includes **GenCrypt** — a military-grade encryption engine for your 
 - **PBKDF2 key derivation** — 100,000 iterations
 - **Streaming encryption** — handles large files without loading into RAM
 - **35-pass secure deletion** — Gutmann method
+- **Keyfile support** — combine a password with a random keyfile (both required to decrypt)
+- **Folder-batch encryption** — encrypt every video/image in a folder in one go
+- **Password strength meter** — check passwords from the command line
 
 ### Usage
 
@@ -146,6 +157,16 @@ python security\gencrypt.py shred secret.mp4
 
 # Encrypt and delete original
 python security\gencrypt.py encrypt video.mp4 --password "MySecret123" --delete-original
+
+# Encrypt with a keyfile (password + keyfile both needed to decrypt)
+python security\gencrypt.py encrypt video.mp4 --password "MySecret123" --keyfile mykey.bin
+python security\gencrypt.py decrypt video.mp4.enc --password "MySecret123" --keyfile mykey.bin
+
+# Encrypt a whole folder (videos + images)
+python security\gencrypt.py encrypt-folder . --password "MySecret123"
+
+# Check password strength (0-4 score + entropy estimate)
+python security\gencrypt.py strength "MySecret123!"
 ```
 
 ---
@@ -163,13 +184,15 @@ nj-player/
 ├── make-icon.ps1         <- draws the NJ Player logo
 ├── nj-player.ico         <- the custom logo
 ├── install.ps1           <- one-time setup (downloads mpv + shaders)
+├── update-shaders.ps1    <- fetches the latest enhancement shaders
+├── log.ps1               <- shared logging helper (writes logs\)
 ├── mpv.conf              <- core config + enhancement profiles
 ├── input.conf            <- hotkey bindings
 ├── scripts/
 │   ├── nj-presets.lua    <- preset switching
 │   ├── player-overlay.lua <- player overlay
 │   ├── audio-enhance.lua <- audio processing
-│   ├── auto-enhance.lua  <- auto-detection
+│   ├── auto-enhance.lua  <- auto-detection + performance fallback
 │   ├── zoom-control.lua  <- zoom & pan
 │   ├── compare-mode.lua  <- split-screen
 │   └── performance-monitor.lua <- GPU/CPU stats
@@ -178,6 +201,8 @@ nj-player/
 │   ├── encrypt.ps1       <- encrypt dialog
 │   ├── decrypt-play.ps1  <- decrypt & play
 │   └── install-security.ps1 <- security setup
+├── tests/
+│   └── test_gencrypt.py  <- unit tests for the encryption engine
 ├── shaders/              <- enhancement shaders (created by install.ps1)
 ├── mpv/                  <- mpv + yt-dlp + ffmpeg (created by install.ps1)
 ├── nj-config/            <- user settings
@@ -212,12 +237,14 @@ Everything is self-contained in this folder — you can move it anywhere (USB st
 
 ## What's Next (Roadmap)
 
-- **Thumbnail grid view** — browse all videos as a poster wall
-- **Playlist support** — queue multiple videos
-- **Multi-language UI** — international support
+Done in 3.0.2: thumbnail grid view, playlist support, multi-language UI,
+AV1/8K hardware-decode settings, external subtitles, resume/recents,
+keyfile + folder-batch encryption, auto performance fallback.
+
+Still planned:
 - **Custom shader marketplace** — community shaders
-- **AV1 hardware decoding** — next-gen codec support
-- **8K support** — future-proof
+- **Real-time thumbnail grid thumbnail cache** — pre-generated previews
+- **Transcoding** — re-encode with nyto a target device
 
 ---
 

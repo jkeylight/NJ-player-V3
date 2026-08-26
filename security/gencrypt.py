@@ -53,6 +53,27 @@ class GenCrypt:
         )
         return kdf.derive(password.encode('utf-8'))
 
+    def _derive_key_concat(self, password: str, salt: bytes, keyfile: bytes) -> bytes:
+        """Derive a key from the password combined with a keyfile's material.
+
+        The password and keyfile bytes are concatenated before PBKDF2, and the
+        derived key is XORed with a SHA-256 digest of the keyfile data. This means
+        BOTH the password and the keyfile are required to derive the correct key
+        (matching the behaviour of e.g. VeraCrypt/TrueCrypt keyfiles).
+        """
+        combined = password.encode('utf-8') + b'|NJ-KEYFILE|' + keyfile
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=self.KEY_SIZE,
+            salt=salt,
+            iterations=self.KDF_ITERATIONS,
+            backend=self.backend
+        )
+        base_key = kdf.derive(combined)
+        # Mix in the keyfile digest so the keyfile is mandatory.
+        keyfile_digest = hashlib.sha256(keyfile).digest()
+        return bytes(a ^ b for a, b in zip(base_key, keyfile_digest[:self.KEY_SIZE]))
+
     def _create_header(self, original_name: str, file_size: int, file_type: int) -> bytes:
         """Create 128-byte encrypted file header"""
         # Truncate or pad filename to 64 bytes
@@ -76,9 +97,17 @@ class GenCrypt:
 
         return header, salt, iv
 
+    def _resolve_password_key(self, password: str, keyfile: bytes) -> bytes:
+        """Return the raw password material, conditionally concatenated with a keyfile.
+
+        Returns (plain_password, keyfile_bytes). If a keyfile is provided, the key
+        derivation combines the password and the keyfile.
+        """
+        return password, keyfile
+
     def encrypt_file(self, input_path: str, password: str,
                      output_path: str = None, progress_callback=None,
-                     delete_original: bool = False) -> str:
+                     delete_original: bool = False, keyfile: bytes = None) -> str:
         """
         Encrypt a file with AES-256-GCM
 
@@ -88,6 +117,8 @@ class GenCrypt:
             output_path: Output path (defaults to input_path + '.enc')
             progress_callback: Function(current_bytes, total_bytes)
             delete_original: If True, secure-delete original after encryption
+            keyfile: Raw keyfile bytes (optional). When provided, both the
+                     password and the keyfile are required to decrypt.
 
         Returns:
             Path to encrypted file
@@ -118,8 +149,11 @@ class GenCrypt:
         # Create header
         header, salt, iv = self._create_header(original_name, file_size, file_type)
 
-        # Derive key
-        key = self._derive_key(password, salt)
+        # Derive key (optionally combined with a keyfile)
+        if keyfile:
+            key = self._derive_key_concat(password, salt, keyfile)
+        else:
+            key = self._derive_key(password, salt)
 
         # Create cipher
         cipher = Cipher(
@@ -175,7 +209,8 @@ class GenCrypt:
         return output_path
 
     def decrypt_file(self, input_path: str, password: str,
-                     output_path: str = None, progress_callback=None) -> str:
+                     output_path: str = None, progress_callback=None,
+                     keyfile: bytes = None) -> str:
         """
         Decrypt a file encrypted with GenCrypt
 
@@ -184,6 +219,8 @@ class GenCrypt:
             password: Decryption password
             output_path: Output path (defaults to original filename)
             progress_callback: Function(current_bytes, total_bytes)
+            keyfile: Raw keyfile bytes (optional). Must match the keyfile used
+                     at encryption time.
 
         Returns:
             Path to decrypted file
@@ -218,8 +255,11 @@ class GenCrypt:
             else:
                 output_path = str(Path(output_path))
 
-            # Derive key
-            key = self._derive_key(password, salt)
+            # Derive key (optionally combined with a keyfile)
+            if keyfile:
+                key = self._derive_key_concat(password, salt, keyfile)
+            else:
+                key = self._derive_key(password, salt)
 
             # Calculate encrypted data size
             total_file_size = os.path.getsize(input_path)
@@ -435,6 +475,74 @@ class SecureDelete:
 
 
 # ============================================
+# PASSWORD STRENGTH
+# ============================================
+
+def password_strength(password: str) -> dict:
+    """Estimate password strength and return a summary dict.
+
+    Returns:
+        dict with keys: score (0-4), label, entropy_bits, suggestions (list[str])
+    """
+    import re
+
+    if not password:
+        return {"score": 0, "label": "Empty", "entropy_bits": 0, "suggestions": ["Enter a password"]}
+
+    length = len(password)
+    lower = bool(re.search(r'[a-z]', password))
+    upper = bool(re.search(r'[A-Z]', password))
+    digit = bool(re.search(r'\d', password))
+    symbol = bool(re.search(r'[^A-Za-z0-9]', password))
+
+    # Estimate entropy from character-pool size.
+    pool = 0
+    if lower:
+        pool += 26
+    if upper:
+        pool += 26
+    if digit:
+        pool += 10
+    if symbol:
+        pool += 33
+    if pool == 0:
+        pool = 10  # e.g. all spaces/control chars
+
+    entropy = int(length * (pool.bit_length() or 1))
+
+    # Heuristic score 0-4.
+    score = 0
+    if length >= 8:
+        score = 1
+    if length >= 10 and (upper or digit) and (lower or symbol):
+        score = 2
+    if length >= 14 and upper and lower and digit and symbol:
+        score = 3
+    if length >= 18 and upper and lower and digit and symbol:
+        score = 4
+
+    labels = ["Very weak", "Weak", "Fair", "Good", "Strong"]
+    suggestions = []
+    if length < 8:
+        suggestions.append("Use at least 8 characters")
+    if not (upper and lower):
+        suggestions.append("Mix upper and lower case")
+    if not digit:
+        suggestions.append("Add numbers")
+    if not symbol:
+        suggestions.append("Add symbols")
+    if len(set(password)) < 5:
+        suggestions.append("Avoid repeated characters")
+
+    return {
+        "score": score,
+        "label": labels[score],
+        "entropy_bits": entropy,
+        "suggestions": suggestions,
+    }
+
+
+# ============================================
 # COMMAND LINE INTERFACE
 # ============================================
 
@@ -470,18 +578,33 @@ Examples:
     encrypt_parser.add_argument('--output', help='Output file path (default: input.enc)')
     encrypt_parser.add_argument('--delete-original', action='store_true',
                                 help='Secure-delete original after encryption')
+    encrypt_parser.add_argument('--keyfile', help='Path to keyfile (optional, added entropy)')
+
+    # Encrypt-folder command
+    enc_folder_parser = subparsers.add_parser('encrypt-folder', help='Encrypt every file in a folder')
+    enc_folder_parser.add_argument('input', help='Folder containing files to encrypt')
+    enc_folder_parser.add_argument('--password', required=True, help='Encryption password')
+    enc_folder_parser.add_argument('--extensions', help='Comma-separated extensions to include (default: videos+images)')
+    enc_folder_parser.add_argument('--delete-original', action='store_true',
+                                   help='Secure-delete originals after encryption')
+    enc_folder_parser.add_argument('--keyfile', help='Path to keyfile (optional)')
 
     # Decrypt command
     decrypt_parser = subparsers.add_parser('decrypt', help='Decrypt a file')
     decrypt_parser.add_argument('input', help='Encrypted file path')
     decrypt_parser.add_argument('--password', required=True, help='Decryption password')
     decrypt_parser.add_argument('--output', help='Output file path')
+    decrypt_parser.add_argument('--keyfile', help='Path to keyfile (must match encryption)')
 
     # Shred command
     shred_parser = subparsers.add_parser('shred', help='Secure-delete a file')
     shred_parser.add_argument('input', help='File to shred')
     shred_parser.add_argument('--passes', type=int, default=35, choices=[1, 3, 7, 35],
                               help='Number of passes (default: 35)')
+
+    # Strength command
+    strength_parser = subparsers.add_parser('strength', help='Check password strength')
+    strength_parser.add_argument('password', help='Password to evaluate')
 
     args = parser.parse_args()
 
@@ -490,6 +613,11 @@ Examples:
         return
 
     gencrypt = GenCrypt()
+
+    def _load_keyfile(path):
+        if not path:
+            return None
+        return Path(path).read_bytes()
 
     if args.command == 'encrypt':
         def progress(current, total):
@@ -501,9 +629,41 @@ Examples:
             args.password,
             args.output,
             progress_callback=progress,
-            delete_original=args.delete_original
+            delete_original=args.delete_original,
+            keyfile=_load_keyfile(args.keyfile)
         )
         print()
+
+    elif args.command == 'encrypt-folder':
+        folder = Path(args.input)
+        if not folder.is_dir():
+            print(f"[FAIL] Not a folder: {folder}")
+            sys.exit(1)
+
+        video_exts = {'.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v', '.ts', '.mts'}
+        image_exts = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif'}
+        if args.extensions:
+            wanted = {e.strip().lower() if e.strip().startswith('.') else '.' + e.strip().lower()
+                      for e in args.extensions.split(',')}
+        else:
+            wanted = video_exts | image_exts
+
+        files = [str(p) for p in folder.iterdir() if p.is_file() and p.suffix.lower() in wanted]
+        if not files:
+            print(f"[SKIP] No matching files in {folder}")
+            return
+
+        print(f"Encrypting {len(files)} file(s) in {folder}...")
+        for i, f in enumerate(files, 1):
+            print(f"\n[{i}/{len(files)}] {Path(f).name}")
+            gencrypt.encrypt_file(
+                f, args.password,
+                progress_callback=lambda c, t: print("\r   Encrypting: {:.1f}%".format(
+                    (c / t) * 100 if t > 0 else 0), end='', flush=True),
+                delete_original=args.delete_original,
+                keyfile=_load_keyfile(args.keyfile)
+            )
+        print("\n[OK] Folder encryption complete")
 
     elif args.command == 'decrypt':
         def progress(current, total):
@@ -515,7 +675,8 @@ Examples:
                 args.input,
                 args.password,
                 args.output,
-                progress_callback=progress
+                progress_callback=progress,
+                keyfile=_load_keyfile(args.keyfile)
             )
             print()
         except ValueError as e:
@@ -535,6 +696,15 @@ Examples:
             shredder.secure_delete_quick(args.input, passes=args.passes)
 
         print()
+
+    elif args.command == 'strength':
+        summary = password_strength(args.password)
+        print(f"Score: {summary['score']}/4 ({summary['label']})")
+        print(f"Entropy: ~{summary['entropy_bits']} bits")
+        if summary['suggestions']:
+            print("Suggestions:")
+            for s in summary['suggestions']:
+                print(f"  - {s}")
 
 
 if __name__ == '__main__':

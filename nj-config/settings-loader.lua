@@ -11,7 +11,7 @@ local settings_path = mp.command_native({"expand-path", "~~/nj-config/settings.j
 
 -- Default settings
 local default_settings = {
-    version = "3.0.1",
+    version = "3.0.2",
     enhancement = {
         default_preset = "auto",
         auto_detect = true,

@@ -65,10 +65,26 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 | `-Clean` | Wipes `build/` and `dist/` first — use if you've built before to avoid stale files |
 | `-SkipDownload` | Reuses existing `shaders/` and `mpv/` instead of re-downloading |
 
-Output: **`dist\NJ-Player-3.0.1-portable.zip`**
+Output: **`dist\NJ-Player-3.0.2-portable.zip`**
 
 > The build script now **bundles** whatever shaders/mpv files already exist in the repo,
 > so the ZIP stays complete even if a download fails.
+
+To refresh the enhancement shaders (e.g. after an upstream update):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File update-shaders.ps1
+```
+
+### Optional: run the unit tests
+
+The encryption engine ships with tests. With Python + `cryptography` installed:
+
+```powershell
+python -m pytest tests\test_gencrypt.py -v
+# or without pytest:
+python tests\test_gencrypt.py
+```
 
 ---
 
